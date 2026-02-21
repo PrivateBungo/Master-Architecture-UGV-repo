@@ -151,10 +151,41 @@ Pull-mode reconcile (robot-local):
 
 ## 6) Configuration and identity model
 
-- Canonical robot identity is explicit (e.g., `/etc/ugv-robot-id = robot-042`).
-- Profiles/overlays select hardware class and per-robot parameters.
-- Non-secret config belongs in repo-managed profiles.
-- Secrets should be minimized and injected at provisioning/runtime, not committed.
+### Canonical identity and host bootstrap seeds
+
+Each robot is provisioned with:
+
+- A unique hostname.
+- A unique SSH deploy key that grants least-privilege read access to the required private repositories.
+- Local identity marker(s), for example `/etc/ugv-robot-id`.
+
+These seeded values are the root of robot identity in the deployment pipeline.
+
+### Local environment repository model
+
+Alongside the host-infra and app repositories, each robot pulls from a dedicated local environment configuration repository:
+
+- Repository: `https://github.com/PrivateBungo/UGV-local-environment-variables`
+- The hostname is used as the lookup key for selecting a robot-specific environment file.
+- This repo stores device-scoped, operational configuration, for example:
+  - Camera type and camera tuning
+  - Enabled/disabled services and feature flags
+  - Physical dimensions/limits and platform constants
+  - Local ACL fragments and host-specific policy settings
+
+This keeps robot-specific operational data versioned, reviewable, and separate from shared application logic.
+
+### Fallback behavior for new robots
+
+If a newly provisioned hostname has no dedicated environment file yet, the host must load a **default baseline environment file** from the same local-environment repository.
+
+This default profile enables first-boot safety and predictability while the final robot-specific file is prepared.
+
+### Secret handling and future encryption direction
+
+- Non-secret config belongs in Git-managed robot environment files.
+- Sensitive material should still be injected via secure provisioning/runtime paths and not committed in plaintext.
+- A planned future enhancement is per-robot encrypted environment payloads (for example, encrypting data so only the intended robot can decrypt it with its provisioned identity key material).
 
 ---
 
@@ -184,11 +215,25 @@ This master architecture references three implementation repos:
 3. **Firmware** — `hoverboard-firmware-hack-FOC`
    - Real-time motor control, watchdog/safety enforcement, hardware-near command execution.
 
+Additional configuration repo:
+
+4. **Local environment variables** — `UGV-local-environment-variables`
+   - Hostname-scoped robot configuration files and a default fallback profile for bootstrap.
+
 This repo documents cross-repo contracts and architecture invariants; domain repos own implementation depth.
 
 ---
 
-## 9) Architecture invariants (must not break)
+## 9) Cross-repo implementation guides
+
+To operationalize the above model, use these companion instructions:
+
+- `docs/host-infra-local-env-integration.md` — implementation plan for the host infrastructure repo to clone/select/fallback robot environment files.
+- `docs/local-env-repo-scaffold.md` — initial scaffold and conventions for the currently empty `UGV-local-environment-variables` repository.
+
+---
+
+## 10) Architecture invariants (must not break)
 
 - Remote control sends **intent**, not direct motor electrical commands.
 - Onboard supervisor remains the sole motion-command authority in Linux domain.
