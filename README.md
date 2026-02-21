@@ -286,7 +286,109 @@ Tailscale auth modes during bootstrap:
 
 ---
 
-## 10) Cross-repo implementation guides
+## 10) Delivery status by chapter (where we are now vs. what remains)
+
+This section separates **implemented baseline** from **remaining work** chapter-by-chapter so progress is explicit.
+
+### Chapter A — Operator interface domain
+
+**Implemented now**
+- Browser-facing signaling/control concept is defined at architecture level.
+- Onboard stack includes an initial signaling-facing service scaffold (`webrtc-service`).
+
+**Still to implement**
+- Production operator UI (auth, session lifecycle, operator ergonomics).
+- End-to-end command contract enforcement from UI through supervisor.
+- Operator observability views (faults, health, link quality, mode state).
+
+### Chapter B — Secure connectivity domain (Tailnet)
+
+**Implemented now**
+- Tailscale is the primary access boundary in the architecture.
+- Host-infra bootstrap and converge paths support interactive/authkey Tailscale login.
+- Default-deny inbound host firewall posture is part of host-infra design.
+
+**Still to implement**
+- Fleet-scale ACL hardening and role/tag policy review process.
+- Documented key rotation/incident response playbooks.
+- Automated compliance checks for tag/ACL drift.
+
+### Chapter C — Onboard host domain (Debian + GitOps converge)
+
+**Implemented now**
+- Robot-local pull reconcile model with timer-based cadence.
+- Local Ansible converge, compose update gating, and service health checks.
+- Explicit reboot gate and rollback-friendly Git update strategy.
+
+**Still to implement**
+- Formal SLO/SLA targets for converge duration and recovery behavior.
+- Stronger telemetry around reconcile outcomes (metrics + alerting hooks).
+- Automated disaster-recovery drill procedure and validation checklist.
+
+### Chapter D — Onboard container control-plane domain
+
+**Implemented now**
+- Minimal two-container baseline (`webrtc-service` + `uart-bridge`) exists.
+- Inter-service UDP communication path is demonstrated.
+
+**Still to implement**
+- Full control-plane decomposition (`control-api`, `supervisor`, `telemetry-bridge`, `logger`).
+- Deterministic schema/versioning for intent + telemetry contracts.
+- Integration and soak testing for degraded-network and restart scenarios.
+
+### Chapter E — Linux-to-firmware boundary
+
+**Implemented now**
+- Contract intent is documented (bounded setpoints, watchdog, fault feedback).
+
+**Still to implement**
+- Versioned protocol specification (fields, units, bounds, error codes).
+- Conformance tests between Linux-side bridge and firmware parser.
+- Replay/simulation tooling for protocol and fault injection.
+
+### Chapter F — Embedded control/firmware domain
+
+**Implemented now**
+- Architecture mandates firmware-local safety authority and safe-stop invariants.
+
+**Still to implement**
+- Complete mode machine + watchdog verification matrix.
+- Hardware-in-the-loop validation and fault-latch acceptance criteria.
+- Safety case evidence package linking firmware behavior to system hazards.
+
+### Chapter G — Configuration and identity domain
+
+**Implemented now**
+- Canonical robot ID path and env-config lookup/fallback model are defined.
+- Dedicated local-env repository role is documented.
+
+**Still to implement**
+- Mature per-robot config lifecycle (review rules, promotion flow, rollback rules).
+- Validation tooling for env keys/types/ranges in CI.
+- Optional encrypted per-robot secret fragments with operational runbooks.
+
+### Chapter H — Provisioning and operations domain
+
+**Implemented now**
+- Public seed bootstrap flow and USB first-boot wrapper are documented.
+- Required private repositories for deploy-key access are explicit.
+
+**Still to implement**
+- Operator runbooks for first-boot exceptions and offline recovery.
+- Fleet acceptance checklist for first-boot completion criteria.
+- Auditable post-provision verification report artifact.
+
+### Near-term execution priorities
+
+1. Finalize control-plane service split and command authority boundaries in running code.
+2. Publish protocol/schema contracts (intent, telemetry, Linux↔firmware).
+3. Add CI validation for local-env repository structure and key contracts.
+4. Add operational observability for reconcile outcomes and service health trends.
+5. Define acceptance test matrix (bootstrap, reconnect, failsafe, rollback).
+
+---
+
+## 11) Cross-repo implementation guides
 
 To operationalize the above model, use these companion instructions:
 
@@ -295,7 +397,7 @@ To operationalize the above model, use these companion instructions:
 
 ---
 
-## 11) Architecture invariants (must not break)
+## 12) Architecture invariants (must not break)
 
 - Remote control sends **intent**, not direct motor electrical commands.
 - Onboard supervisor remains the sole motion-command authority in Linux domain.
