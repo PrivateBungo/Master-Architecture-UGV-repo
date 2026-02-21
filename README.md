@@ -132,7 +132,7 @@ Deterministic boot expectation:
 
 ---
 
-## 5) GitOps host convergence
+## 5) GitOps host convergence (robot-local pull mode)
 
 Host convergence exists to keep operational baseline consistent:
 
@@ -140,12 +140,31 @@ Host convergence exists to keep operational baseline consistent:
 - Device rules/permissions
 - systemd units/timers and runtime hygiene
 
-Pull-mode reconcile (robot-local):
+Host-infra implementation model (`ugv-robot-os`) is:
+
+- Canonical robot identity file: `/etc/ugv-robot-id`
+- Repo checkout path on host: `/opt/ugv/ugv-robot-os`
+- Compose runtime path: `/opt/ugv/stack`
+- Reconcile script path: `/usr/local/sbin/ugv-reconcile.sh`
+- Reconcile cadence: `ugv-reconcile.timer` every 10 minutes
+
+Pull-mode reconcile flow:
 
 1. Fetch latest Git revision.
-2. If desired revision changed, run local Ansible converge.
-3. Update container stack deterministically (pinned image tags).
-4. Run health checks and keep rollback path to last-known-good revision.
+2. If desired revision changed, run local Ansible converge (`ansible/site.yml`).
+3. Run compose pull/up based on explicit policy (`/etc/default/ugv-reconcile`):
+   - default behavior: compose update only when files under `compose/` changed.
+4. Run health checks (`tailscaled`, `docker`, and `docker compose ps`).
+5. Reboot only when both conditions are true:
+   - `/var/run/reboot-required` exists, and
+   - `/etc/ugv-allow-reboot` exists.
+
+Update and rollback policy:
+
+- Default Git update mode is fast-forward only.
+- Optional strict drift overwrite mode is hard-reset.
+- Rollback is Git-native by moving `origin/main` back to prior commit.
+- Failed applies must preserve last-known-good running containers.
 
 ---
 
@@ -166,7 +185,7 @@ These seeded values are the root of robot identity in the deployment pipeline.
 Alongside the host-infra and app repositories, each robot pulls from a dedicated local environment configuration repository:
 
 - Repository: `https://github.com/PrivateBungo/UGV-local-environment-variables`
-- The hostname is used as the lookup key for selecting a robot-specific environment file.
+- Robot ID from `/etc/ugv-robot-id` is the canonical lookup key.
 - This repo stores device-scoped, operational configuration, for example:
   - Camera type and camera tuning
   - Enabled/disabled services and feature flags
@@ -175,9 +194,21 @@ Alongside the host-infra and app repositories, each robot pulls from a dedicated
 
 This keeps robot-specific operational data versioned, reviewable, and separate from shared application logic.
 
-### Fallback behavior for new robots
+### File-first fallback behavior for new robots
 
-If a newly provisioned hostname has no dedicated environment file yet, the host must load a **default baseline environment file** from the same local-environment repository.
+Installer/runtime resolve env config in this order:
+
+1. `robots/<ROBOT_ID>.env`
+2. legacy `robots/<ROBOT_ID>/` (backward compatibility)
+3. fallback via compatibility pointer `defaults/default.env`
+
+Selection metadata is materialized for observability:
+
+- `/etc/ugv-env-config-path`
+- `/etc/ugv-env-config-kind`
+- `/etc/ugv-env-config-dir`
+
+If a newly provisioned robot has no dedicated environment file yet, host infra must load the default baseline from the same local-environment repository.
 
 This default profile enables first-boot safety and predictability while the final robot-specific file is prepared.
 
@@ -207,24 +238,55 @@ Never-do rules:
 
 ## 8) Repository mapping
 
-This master architecture references three implementation repos:
+This master architecture references these implementation repos:
 
 1. **Host infra** — `Host-infra-for-UGV-controller`
    - Bootstrap, Ansible converge, systemd reconcile, firewall/network baseline, compose/runtime pinning.
-2. **Onboard stack** — container services (`webrtc-service`, `uart-bridge`, and future expanded control-plane services).
+2. **Onboard stack** — `Dockers-for-onboard-UGV-Controller`
+   - Current baseline is a two-container scaffold:
+     - `webrtc-service`: HTTP/WebSocket signaling placeholder + periodic UDP control heartbeat.
+     - `uart-bridge`: UDP listener/parsing placeholder with TODO for UART forwarding.
 3. **Firmware** — `hoverboard-firmware-hack-FOC`
    - Real-time motor control, watchdog/safety enforcement, hardware-near command execution.
 
 Additional configuration repo:
 
 4. **Local environment variables** — `UGV-local-environment-variables`
-   - Hostname-scoped robot configuration files and a default fallback profile for bootstrap.
+   - Operational env scaffolding split by domain (physical platform, camera, UART PCB, ACL).
+   - Default template under `defaults/default/` plus planned `robots/<robot-id>.env` expansion.
+
+Required private repositories for deploy-key bootstrap access:
+
+- `git@github.com:PrivateBungo/UGV-local-environment-variables.git`
+- `git@github.com:PrivateBungo/Dockers-for-onboard-UGV-Controller.git`
+- `git@github.com:PrivateBungo/Host-infra-for-UGV-controller.git`
 
 This repo documents cross-repo contracts and architecture invariants; domain repos own implementation depth.
 
 ---
 
-## 9) Cross-repo implementation guides
+## 9) Provisioning and first-boot workflows
+
+Two bootstrap paths are currently defined in host infra:
+
+1. **Public seed bootstrap script** (copy/paste self-contained script) that:
+   - generates per-repo deploy keys,
+   - validates GitHub access repo-by-repo,
+   - clones/updates required repositories,
+   - invokes host installer with robot ID + env-config repository.
+2. **USB first-boot wrapper** (`bootstrap/first-boot-from-usb.sh`) that:
+   - consumes `ugv-bootstrap.env` + `ugv-secrets.env`,
+   - sets deploy-key Git access and optional infra-repo SSH fallback,
+   - runs installer and clears one-time secrets from process environment.
+
+Tailscale auth modes during bootstrap:
+
+- `interactive` (default): operator completes one-time auth URL flow.
+- `authkey`: bootstrap uses `TS_AUTHKEY` non-interactively.
+
+---
+
+## 10) Cross-repo implementation guides
 
 To operationalize the above model, use these companion instructions:
 
@@ -233,7 +295,7 @@ To operationalize the above model, use these companion instructions:
 
 ---
 
-## 10) Architecture invariants (must not break)
+## 11) Architecture invariants (must not break)
 
 - Remote control sends **intent**, not direct motor electrical commands.
 - Onboard supervisor remains the sole motion-command authority in Linux domain.
