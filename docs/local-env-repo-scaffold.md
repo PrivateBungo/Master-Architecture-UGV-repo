@@ -1,121 +1,147 @@
-# Scaffold Instructions: `UGV-local-environment-variables` Repository
+# Scaffold Instructions: `UGV-local-environment-variables` (with Ansible Vault)
 
-This document defines the initial structure and conventions for:
+This document is for the `UGV-local-environment-variables` repository and is written as a **Codex-ready implementation brief**.
 
-- `https://github.com/PrivateBungo/UGV-local-environment-variables`
+Primary goal: define a predictable repository structure where Docker Hub credentials are stored only in an Ansible Vault file that host-infra can decrypt during bootstrap/reconcile.
 
-The repository is currently empty; use this as the bootstrap scaffold.
+---
 
 ## 1) Repository purpose
 
-Store **robot-specific operational environment configuration** and **default fallback configuration**.
+Store robot operational configuration in two layers:
 
-This repository should not contain firmware/app source code.
+1. Plain non-secret config (`*.env`) for branch/repo/feature defaults.
+2. Encrypted secret config (`secrets.vault.yml`) for sensitive values such as Docker Hub token.
 
-## 2) Proposed directory structure
+No plaintext secrets in committed `.env` files.
+
+---
+
+## 2) Required directory contract
 
 ```text
 UGV-local-environment-variables/
 ├─ README.md
 ├─ defaults/
-│  └─ default.env
-├─ robots/
-│  ├─ .gitkeep
-│  └─ example-robot.env.example
+│  └─ default/
+│     ├─ general.env
+│     ├─ physical-ugv.env
+│     ├─ camera.env
+│     ├─ uart-pcb.env
+│     ├─ acl.env
+│     └─ secrets.vault.yml          # ansible-vault encrypted file
+├─ <ROBOT_ID>/
+│  └─ env/
+│     ├─ general.env
+│     ├─ ... other *.env files ...
+│     └─ secrets.vault.yml          # optional robot override (encrypted)
 ├─ schemas/
-│  └─ env-keys.md
+│  └─ vault-schema.md
 └─ scripts/
    └─ validate-env.sh
 ```
 
-## 3) Minimum required files
+Selection semantics expected by host-infra:
 
-### `defaults/default.env`
+- First choice: `<ROBOT_ID>/env/`
+- Fallback: `defaults/default/`
 
-Must always exist. This is the fallback for new hostnames.
+Both locations must follow the same filename contract, especially `secrets.vault.yml`.
 
-Suggested baseline keys (example):
+---
 
-```env
-UGV_PROFILE=default
-CAMERA_PRIMARY=/dev/video0
-CAMERA_FPS=30
-CONTROL_MAX_LINEAR_MPS=0.5
-CONTROL_MAX_ANGULAR_RADPS=0.8
-FEATURE_AUTONOMY=false
-ACL_PROFILE=standard
+## 3) Required plaintext file content
+
+`defaults/default/general.env` must include at least:
+
+```dotenv
+HOST_INFRA_REPO_BRANCH=main
+HOST_INFRA_REPO_SSH=git@github.com:PrivateBungo/Host-infra-for-UGV-controller.git
+LOCAL_ENV_REPO_SSH=git@github.com:PrivateBungo/UGV-local-environment-variables.git
+DOCKER_STACK_REPO_SSH=git@github.com:PrivateBungo/Dockers-for-onboard-UGV-Controller.git
 ```
 
-### `robots/<hostname>.env`
+This keeps branch/repo metadata outside vault and aligns with current bootstrap/reconcile expectations.
 
-One file per robot, keyed by exact hostname. Example:
+---
 
-- `robots/ugv-042.env`
+## 4) Required vault schema (predictable + strict)
 
-Only override keys that differ from defaults if your host-infra merge logic supports overlays; otherwise include full key sets.
+`secrets.vault.yml` must decrypt to this shape:
 
-### `schemas/env-keys.md`
-
-Define and document:
-
-- key name
-- type
-- allowed range/enum
-- default
-- consuming service
-
-This becomes the contract between infra and application services.
-
-### `scripts/validate-env.sh`
-
-Provide a lightweight validator that:
-
-- checks file naming (`robots/*.env`)
-- checks syntax (`KEY=VALUE`)
-- rejects duplicate keys per file
-- optionally checks required key presence
-
-Use this script in CI before merges.
-
-## 4) Naming and formatting conventions
-
-- Use uppercase snake-case keys.
-- Use UTF-8 text, LF line endings.
-- Avoid inline secrets in plaintext.
-- Keep comments focused and operational.
-
-Example style:
-
-```env
-# Camera transport
-CAMERA_PRIMARY=/dev/video0
-CAMERA_CODEC=h264
+```yaml
+registry_auth:
+  dockerhub:
+    username: "<dockerhub-username>"
+    token: "<dockerhub-access-token>"
+    registry: "docker.io"
 ```
 
-## 5) Bootstrap workflow for a brand-new robot
+Rules:
 
-1. Robot is provisioned with hostname + deploy key.
-2. Host infra attempts `robots/<hostname>.env`.
-3. If missing, host infra falls back to `defaults/default.env`.
-4. Ops creates `robots/<hostname>.env` in this repo.
-5. Next reconcile picks up robot-specific file automatically.
+- `registry_auth.dockerhub.username` is required.
+- `registry_auth.dockerhub.token` is required.
+- `registry_auth.dockerhub.registry` is optional; default assumed `docker.io`.
+- No additional top-level keys unless host-infra parser is updated accordingly.
 
-## 6) Suggested initial README content for the env repo
+---
 
-Include:
+## 5) How to create/update vault file
 
-- repository intent
-- directory contract (`defaults/`, `robots/`, `schemas/`, `scripts/`)
-- required fallback file (`defaults/default.env`)
-- robot file naming rule (`robots/<hostname>.env`)
-- note about future encrypted per-robot files
+Example workflow for operators/developers:
 
-## 7) Future enhancement: per-robot encrypted env files
+```bash
+cd UGV-local-environment-variables
 
-When ready, extend scaffold with encrypted variants, for example:
+cat > /tmp/secrets.plain.yml <<'YAML'
+registry_auth:
+  dockerhub:
+    username: "my-dockerhub-user"
+    token: "dckr_pat_..."
+    registry: "docker.io"
+YAML
 
-- `robots/<hostname>.env.age`
+ansible-vault encrypt /tmp/secrets.plain.yml \
+  --output defaults/default/secrets.vault.yml
 
-Keep plaintext defaults if needed for bootstrap, or split defaults into non-secret + encrypted secret fragments.
+rm -f /tmp/secrets.plain.yml
+```
 
-The host infra should decrypt only the target robot file and never pull secrets for other robots into runtime.
+For robot-specific override:
+
+```bash
+ansible-vault encrypt /tmp/secrets.plain.yml \
+  --output <ROBOT_ID>/env/secrets.vault.yml
+```
+
+---
+
+## 6) Validation requirements
+
+`scripts/validate-env.sh` should verify:
+
+1. Required directories exist (`defaults/default/`).
+2. Required plaintext file exists (`general.env`).
+3. Required key presence in `general.env`.
+4. `secrets.vault.yml` exists in required directories.
+5. Vault file starts with Ansible Vault header (`$ANSIBLE_VAULT;`).
+6. Optional: schema check by decrypting with CI-provided vault password and validating required keys.
+
+---
+
+## 7) Suggested tasks for Codex in local-env repo
+
+1. Create `defaults/default/` structure and baseline env files.
+2. Add encrypted `defaults/default/secrets.vault.yml` using schema above.
+3. Add `schemas/vault-schema.md` documenting required keys and meanings.
+4. Add `scripts/validate-env.sh` for naming/syntax/required-file checks.
+5. Update repo README with operator instructions for vault creation/rotation.
+
+---
+
+## 8) Rotation and operational guidance
+
+- Rotate Docker Hub token by updating plaintext source and re-encrypting vault.
+- Commit vault ciphertext only.
+- Share vault passphrase out-of-band (never in git).
+- If passphrase changes, host operators must provide updated passphrase at bootstrap/reconcile secret provisioning step.
