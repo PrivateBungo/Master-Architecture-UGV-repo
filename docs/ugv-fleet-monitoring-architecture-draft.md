@@ -133,3 +133,103 @@ This stage is complete when:
 - Agent responsibilities and bandwidth-isolation controls are agreed.
 - 24-hour buffering policy and prioritization rules are defined.
 - Single-operator workflow and minimum views are documented.
+
+
+## 10) Platform philosophy fit (solution options overview)
+
+This section provides a **tooling-orientation discussion** (not a final selection) to help evaluate leading approaches against the requirements in this draft.
+
+### 10.1 Evaluation lens used
+
+Each platform family is judged against the highest-priority requirements:
+- Mission-critical functional-failure detection (camera/PCB/control-link/container failures).
+- Log-first triage capability with useful context.
+- Agent-based collection on Raspberry Pi–class hardware.
+- 24-hour buffering and priority forwarding of critical events.
+- Strong bandwidth isolation so monitoring does not degrade mission traffic.
+- Lean single-operator operational workflow.
+
+### 10.2 Observability-SaaS-first platforms (all-in-one commercial stacks)
+
+**Typical design philosophy**
+- “Instrument everything, centralize everything, correlate everything.”
+- Very strong user experience for dashboards, search, alerting, and incident triage.
+- Emphasis on broad coverage (metrics, logs, traces, synthetic checks, APM, etc.) with centralized governance.
+
+**Where this fits well for us**
+- Fast path to usable log search and alerting for critical failures.
+- Good operator ergonomics for a single person managing incidents.
+- Strong built-in correlation patterns (service restarts + error logs + host pressure).
+
+**Where this can be squeezed for us**
+- Philosophy can trend toward high data ingestion by default, which can conflict with strict bandwidth-isolation requirements unless carefully constrained.
+- Cost and complexity can grow if full “collect everything” posture is not actively limited.
+- Some advanced features may be unnecessary for current single-operator scope.
+
+### 10.3 Metrics-first cloud-native stacks (Prometheus-style ecosystem + log add-ons)
+
+**Typical design philosophy**
+- Open standards and composable components; strong control over what is collected and how.
+- Metrics and rule-based alerting first; logs often integrated as a separate but connected subsystem.
+- Engineering-driven flexibility over turnkey UX.
+
+**Where this fits well for us**
+- Good match for lean control and “collect only what matters.”
+- Can be tuned to low-resource edge agents and strict data budgets.
+- Strong for explicit prioritization logic and custom failure-rule modeling.
+
+**Where this can be squeezed for us**
+- More integration effort to achieve polished log-centric incident workflows out of the box.
+- Single-operator teams may feel operational overhead if too many moving parts are introduced early.
+- Without discipline, “DIY flexibility” can slow time-to-value.
+
+### 10.4 Log-analytics/SIEM-oriented platforms
+
+**Typical design philosophy**
+- Treat logs/events as primary truth; powerful indexing, parsing, and query capabilities.
+- Strong event-driven detection workflows and pattern matching.
+- Often built with security/forensics roots, then expanded to operations use cases.
+
+**Where this fits well for us**
+- Excellent alignment with log-first detection of functional failures.
+- Powerful parsing for specific signatures (camera not found, PCB link failure, container startup errors).
+- Useful historical investigation and timeline reconstruction.
+
+**Where this can be squeezed for us**
+- Can encourage high-volume log ingestion unless tight filters and sampling are enforced.
+- May require extra effort to represent low-level host/container health in an operations-friendly way (depending on platform shape).
+- If security-centric workflows dominate, operator UX for lean ops may require simplification.
+
+### 10.5 Hybrid edge-first + central SaaS control-plane patterns
+
+**Typical design philosophy**
+- Decide/reduce at the edge, escalate centrally: local filtering, buffering, and prioritization before uplink.
+- Central plane used for policy, alerting, and cross-fleet visibility.
+- Designed around intermittent connectivity and constrained environments.
+
+**Where this fits well for us**
+- Very strong fit for war-zone connectivity realities and 24-hour buffering constraints.
+- Naturally supports “critical events first” forwarding and mission-traffic protection.
+- Aligns with Raspberry Pi–class resource constraints when tuned carefully.
+
+**Where this can be squeezed for us**
+- Requires careful edge-policy design to avoid missing useful but non-critical context.
+- More up-front design effort in agent behavior, queue priority classes, and drop policies.
+- Operational debugging can span edge and cloud boundaries if tooling is fragmented.
+
+### 10.6 Practical fit summary for current phase
+
+For the current phase, the strongest philosophical fit is generally a **log-first, edge-aware, agent-based model** with strict policy controls on bandwidth and buffering:
+- Prioritize deterministic detection for mission-blocking failure signatures.
+- Keep host metrics minimal and supporting.
+- Enforce edge prioritization so critical failures are never displaced by low-value telemetry.
+- Keep operator workflow compact (single primary console, minimal states, low alert noise).
+
+### 10.7 Selection criteria to carry into vendor/tool evaluation
+
+When moving from architecture to product selection, require evidence that a candidate can:
+1. Run lightweight on Raspberry Pi–class hardware with bounded resource use.
+2. Provide robust local buffering and priority queues with a 24-hour policy target.
+3. Support hard traffic controls so monitoring cannot crowd out mission traffic.
+4. Detect and alert on known failure signatures with low noise and strong context.
+5. Operate effectively for a single-operator model today, while allowing gradual scale later.
