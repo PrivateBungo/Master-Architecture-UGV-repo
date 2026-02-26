@@ -64,6 +64,12 @@ The architecture should enable rapid detection and triage of high-impact failure
 - FR-22: The architecture shall support explicit bandwidth management and prioritization policies separating monitoring vs operational traffic.
 - FR-23: In constrained links, mission/operational traffic shall take precedence over monitoring traffic.
 
+### 4.7 Network Topology and Isolation
+- FR-24: The system shall distinguish between the **Mission Network** (Private/Control) and the **Observability Path** (Public/Telemetry).
+- FR-25: Mission control, video, and operational commands shall travel via a private, encrypted P2P tunnel (e.g., Tailscale).
+- FR-26: Monitoring telemetry (logs and metrics) shall be pushed via standard encrypted HTTPS/TLS directly to the SaaS endpoint.
+- FR-27: The failure or degradation of the Mission Network shall not prevent the Observability Path from reporting the failure.
+
 ## 5) Non-functional requirements
 
 ### 5.1 Resource and performance constraints
