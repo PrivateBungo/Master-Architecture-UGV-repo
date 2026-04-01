@@ -216,7 +216,20 @@ This default profile enables first-boot safety and predictability while the fina
 
 - Non-secret config belongs in Git-managed robot environment files.
 - Sensitive material should still be injected via secure provisioning/runtime paths and not committed in plaintext.
-- A planned future enhancement is per-robot encrypted environment payloads (for example, encrypting data so only the intended robot can decrypt it with its provisioned identity key material).
+- The active direction is an **Ansible Vault contract** in the local-env repo (`secrets.vault.yml`) that stores registry credentials (starting with Docker Hub token), with host bootstrap prompting for vault passphrase and validating decrypt before first pull.
+
+### Current focus: Ansible Vault bootstrap architecture
+
+To align host-infra and local-env repos, the current architecture decision is:
+
+- Local-env repo owns encrypted secret payloads in deterministic path/name (`<selected-env-dir>/secrets.vault.yml`).
+- Host-infra bootstrap explicitly prompts operator for vault passphrase in CLI.
+- Bootstrap validates both:
+  - deploy-key Git access to local-env repo, and
+  - successful vault decryption for the selected robot env path.
+- Decrypted payload provides Docker Hub auth values used for `docker login` before pull/update.
+
+This enables private image pulls without committing plaintext tokens while keeping robot provisioning mostly operator-driven and auditable.
 
 ---
 
@@ -392,8 +405,8 @@ This section separates **implemented baseline** from **remaining work** chapter-
 
 To operationalize the above model, use these companion instructions:
 
-- `docs/host-infra-local-env-integration.md` — implementation plan for the host infrastructure repo to clone/select/fallback robot environment files.
-- `docs/local-env-repo-scaffold.md` — initial scaffold and conventions for the currently empty `UGV-local-environment-variables` repository.
+- `docs/host-infra-local-env-integration.md` — Codex-ready host-infra implementation brief for bootstrap passphrase prompt, vault-decrypt validation, and Docker Hub login flow.
+- `docs/local-env-repo-scaffold.md` — Codex-ready local-env repository contract with required directory layout, encrypted file name, and strict vault schema.
 
 ---
 
